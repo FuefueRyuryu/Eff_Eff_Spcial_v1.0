@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>えふえふスペシャル！！</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>えふえふスペシャル！！</h1>
+            <p id="libraryStatus">No folder loaded</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="control-button primary" id="folderButton" type="button">Folder</button>
+          <input id="folderInput" type="file" webkitdirectory multiple accept="audio/*" hidden>
+          <button class="control-button danger" id="stopAllButton" type="button">Stop All <kbd>0</kbd></button>
+        </div>
+      </header>
+
+      <section class="analyzer-panel" aria-label="Analyzer">
+        <div class="meter-strip">
+          <div class="meter-readout">
+            <span>Peak</span>
+            <strong id="peakDb">-inf dB</strong>
+          </div>
+          <div class="meter-readout">
+            <span>RMS</span>
+            <strong id="rmsDb">-inf dB</strong>
+          </div>
+        </div>
+        <canvas id="analyzerCanvas" width="1440" height="320"></canvas>
+        <div class="frequency-ruler">
+          <span>20</span>
+          <span>50</span>
+          <span>100</span>
+          <span>250</span>
+          <span>500</span>
+          <span>1k</span>
+          <span>2k</span>
+          <span>5k</span>
+          <span>10k</span>
+          <span>20k</span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <section class="pad-deck" aria-label="Pads">
+          <div class="channel-strip" id="channelStrip"></div>
+          <div class="pad-grid" id="padGrid"></div>
+        </section>
+
+        <aside class="sound-tools" aria-label="Sound tools">
+          <section class="tool-section master-section">
+            <div class="section-title">
+              <span>Master</span>
+              <strong id="masterValue">0 dB</strong>
+            </div>
+            <div class="master-layout">
+              <label class="knob-control">
+                <input id="masterGain" type="range" min="-48" max="6" step="0.1" value="0">
+                <span class="knob" style="--angle: 135deg"></span>
+                <span class="knob-label">Volume</span>
+              </label>
+              <div class="level-tower">
+                <div id="masterMeter" class="level-fill"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tool-section">
+            <div class="section-title">
+              <span>3 Band EQ</span>
+              <button class="mini-button" id="eqReset" type="button">Reset</button>
+            </div>
+            <div class="eq-row">
+              <label class="fader-control">
+                <input class="eq-fader" id="eqLow" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+                <span>Low</span>
+                <strong id="eqLowValue">0.0</strong>
+              </label>
+              <label class="fader-control">
+                <input class="eq-fader" id="eqMid" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+                <span>Mid</span>
+                <strong id="eqMidValue">0.0</strong>
+              </label>
+              <label class="fader-control">
+                <input class="eq-fader" id="eqHigh" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+                <span>High</span>
+                <strong id="eqHighValue">0.0</strong>
+              </label>
+            </div>
+          </section>
+
+          <section class="tool-section filter-section">
+            <div class="section-title">
+              <span>Filter</span>
+              <strong id="filterValue">20 Hz - 20 kHz</strong>
+            </div>
+            <canvas id="filterCanvas" width="480" height="170"></canvas>
+            <div class="filter-controls">
+              <label class="knob-control small">
+                <input id="lowPass" type="range" min="200" max="20000" step="1" value="20000">
+                <span class="knob"></span>
+                <span class="knob-label">LowPass</span>
+              </label>
+              <label class="knob-control small">
+                <input id="highPass" type="range" min="20" max="8000" step="1" value="20">
+                <span class="knob"></span>
+                <span class="knob-label">HighPass</span>
+              </label>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <template id="padTemplate">
+      <article class="pad">
+        <button class="pad-trigger" type="button">
+          <span class="pad-key"></span>
+          <span class="pad-name"></span>
+          <span class="pad-file"></span>
+        </button>
+        <div class="pad-actions">
+          <button class="icon-button stop-button" type="button" title="Stop">STOP</button>
+          <button class="icon-button tape-button" type="button" title="Tape Stop">TAPE</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
