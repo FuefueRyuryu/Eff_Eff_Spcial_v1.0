@@ -13,7 +13,7 @@
           <span class="brand-mark"></span>
           <div>
             <h1>えふえふスペシャル！！</h1>
-            <p id="libraryStatus">No folder loaded</p>
+            <p id="libraryStatus">ロードしやがれください</p>
           </div>
         </div>
         <div class="top-actions">
@@ -23,30 +23,64 @@
         </div>
       </header>
 
-      <section class="analyzer-panel" aria-label="Analyzer">
-        <div class="meter-strip">
-          <div class="meter-readout">
-            <span>Peak</span>
-            <strong id="peakDb">-inf dB</strong>
+      <section class="monitor-panel" aria-label="Monitor">
+        <section class="wave-panel" aria-label="Selected pad waveform">
+          <div class="panel-head">
+            <div>
+              <span class="panel-kicker">Selected Pad</span>
+              <strong id="selectedPadName">A-1 Empty</strong>
+            </div>
+            <span id="selectedPadTime">0:00.000</span>
           </div>
-          <div class="meter-readout">
-            <span>RMS</span>
-            <strong id="rmsDb">-inf dB</strong>
+          <div class="waveform-shell" id="waveformShell">
+            <canvas id="waveformCanvas" width="520" height="300"></canvas>
+            <button class="playhead-handle" id="playheadHandle" type="button" aria-label="Playback position">
+              <span></span>
+            </button>
           </div>
-        </div>
-        <canvas id="analyzerCanvas" width="1440" height="320"></canvas>
-        <div class="frequency-ruler">
-          <span>20</span>
-          <span>50</span>
-          <span>100</span>
-          <span>250</span>
-          <span>500</span>
-          <span>1k</span>
-          <span>2k</span>
-          <span>5k</span>
-          <span>10k</span>
-          <span>20k</span>
-        </div>
+        </section>
+
+        <section class="visualizer-panel" aria-label="Visualizer">
+          <div class="visualizer-shell" id="visualizerShell" title="Click to upload GIF">
+            <input id="gifInput" type="file" accept="image/gif" hidden>
+            <canvas id="visualizerCanvas" width="520" height="300"></canvas>
+            <div class="gif-container" id="gifContainer">
+              <img id="customGif" alt="" style="display: none;">
+            </div>
+          </div>
+        </section>
+
+        <section class="analyzer-panel" aria-label="Analyzer">
+          <div class="panel-head">
+            <div>
+              <span class="panel-kicker">Analyzer</span>
+              <strong>Master Output</strong>
+            </div>
+            <div class="meter-strip">
+              <div class="meter-readout">
+                <span>Peak</span>
+                <strong id="peakDb">-inf dB</strong>
+              </div>
+              <div class="meter-readout">
+                <span>RMS</span>
+                <strong id="rmsDb">-inf dB</strong>
+              </div>
+            </div>
+          </div>
+          <canvas id="analyzerCanvas" width="520" height="300"></canvas>
+          <div class="frequency-ruler">
+            <span>20</span>
+            <span>50</span>
+            <span>100</span>
+            <span>250</span>
+            <span>500</span>
+            <span>1k</span>
+            <span>2k</span>
+            <span>5k</span>
+            <span>10k</span>
+            <span>20k</span>
+          </div>
+        </section>
       </section>
 
       <section class="workspace">
@@ -62,15 +96,22 @@
               <strong id="masterValue">0 dB</strong>
             </div>
             <div class="master-layout">
-              <label class="knob-control">
+              <label class="knob-control fine-knob">
                 <input id="masterGain" type="range" min="-48" max="6" step="0.1" value="0">
                 <span class="knob" style="--angle: 135deg"></span>
                 <span class="knob-label">Volume</span>
+              </label>
+              <label class="knob-control fine-knob selected-volume">
+                <input id="selectedPadGain" type="range" min="-48" max="6" step="0.1" value="0">
+                <span class="knob" style="--angle: 135deg"></span>
+                <span class="knob-label">Pad Vol</span>
+                <strong id="selectedPadGainValue">0 dB</strong>
               </label>
               <div class="level-tower">
                 <div id="masterMeter" class="level-fill"></div>
               </div>
             </div>
+            <button class="mini-button reset-pad-gain" id="padGainReset" type="button">Reset Pad Volumes</button>
           </section>
 
           <section class="tool-section">
@@ -78,19 +119,22 @@
               <span>3 Band EQ</span>
               <button class="mini-button" id="eqReset" type="button">Reset</button>
             </div>
-            <div class="eq-row">
-              <label class="fader-control">
-                <input class="eq-fader" id="eqLow" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+            <div class="eq-row knob-row">
+              <label class="knob-control small eq-knob fine-knob">
+                <input id="eqLow" type="range" min="-18" max="18" step="0.1" value="0">
+                <span class="knob"></span>
                 <span>Low</span>
                 <strong id="eqLowValue">0.0</strong>
               </label>
-              <label class="fader-control">
-                <input class="eq-fader" id="eqMid" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+              <label class="knob-control small eq-knob fine-knob">
+                <input id="eqMid" type="range" min="-18" max="18" step="0.1" value="0">
+                <span class="knob"></span>
                 <span>Mid</span>
                 <strong id="eqMidValue">0.0</strong>
               </label>
-              <label class="fader-control">
-                <input class="eq-fader" id="eqHigh" type="range" min="-18" max="18" step="0.1" value="0" orient="vertical">
+              <label class="knob-control small eq-knob fine-knob">
+                <input id="eqHigh" type="range" min="-18" max="18" step="0.1" value="0">
+                <span class="knob"></span>
                 <span>High</span>
                 <strong id="eqHighValue">0.0</strong>
               </label>
@@ -104,12 +148,12 @@
             </div>
             <canvas id="filterCanvas" width="480" height="170"></canvas>
             <div class="filter-controls">
-              <label class="knob-control small">
+              <label class="knob-control small fine-knob">
                 <input id="lowPass" type="range" min="200" max="20000" step="1" value="20000">
                 <span class="knob"></span>
                 <span class="knob-label">LowPass</span>
               </label>
-              <label class="knob-control small">
+              <label class="knob-control small fine-knob">
                 <input id="highPass" type="range" min="20" max="8000" step="1" value="20">
                 <span class="knob"></span>
                 <span class="knob-label">HighPass</span>
@@ -128,6 +172,7 @@
           <span class="pad-file"></span>
         </button>
         <div class="pad-actions">
+          <button class="icon-button lock-button" type="button" title="Replay Lock">LOCK</button>
           <button class="icon-button stop-button" type="button" title="Stop">STOP</button>
           <button class="icon-button tape-button" type="button" title="Tape Stop">TAPE</button>
         </div>

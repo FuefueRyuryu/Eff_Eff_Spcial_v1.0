@@ -22,14 +22,24 @@
   box-sizing: border-box;
 }
 
+@keyframes cyberGrid {
+  0% { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  100% { background-position: 0 0, 0 0, 0 0, 0 50px, 0 0, 0 0; }
+}
+
 body {
   min-width: 1120px;
   min-height: 100vh;
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(224, 43, 78, 0.1), transparent 34%),
-    radial-gradient(circle at 18% -8%, rgba(22, 185, 224, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(224, 43, 78, 0.14), transparent 32%),
+    radial-gradient(circle at 16% -8%, rgba(22, 185, 224, 0.18), transparent 30%),
+    radial-gradient(circle at 86% 14%, rgba(57, 230, 124, 0.08), transparent 26%),
+    linear-gradient(rgba(22, 185, 224, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 185, 224, 0.04) 1px, transparent 1px),
     var(--bg);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 50px 50px, 50px 50px, 100% 100%;
+  animation: cyberGrid 10s linear infinite;
   color: var(--text);
 }
 
@@ -49,6 +59,8 @@ button {
   border: 1px solid rgba(224, 43, 78, 0.36);
   background: rgba(7, 9, 12, 0.92);
   box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -155,34 +167,176 @@ kbd {
   font-size: 12px;
 }
 
-.analyzer-panel {
-  position: relative;
-  height: 246px;
-  padding: 16px 18px 28px;
+.monitor-panel {
+  display: flex;
+  gap: 12px;
+  height: 276px;
+  min-height: 200px;
+  max-height: 80vh;
+  padding: 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, #080c10, #050708);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    #050708;
+  resize: vertical;
+  overflow: hidden;
 }
 
+.wave-panel,
+.visualizer-panel {
+  width: 33%;
+  min-width: 200px;
+  max-width: 60%;
+  overflow: hidden;
+}
+
+.analyzer-panel {
+  flex: 1;
+  min-width: 200px;
+}
+
+.wave-panel,
+.visualizer-panel,
+.analyzer-panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #0a1014, #050708);
+  overflow: hidden;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.visualizer-shell {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.visualizer-shell canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: radial-gradient(circle at 50% 50%, #101a24, #040608);
+}
+
+.gif-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+.gif-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: contrast(1.2) drop-shadow(0 0 10px rgba(22, 185, 224, 0.5));
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.panel-kicker {
+  display: block;
+  color: var(--line-red);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.panel-head strong {
+  display: block;
+  max-width: 420px;
+  overflow: hidden;
+  color: #eaf4f8;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#selectedPadTime {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.waveform-shell {
+  position: relative;
+  height: calc(100% - 48px);
+  cursor: crosshair;
+}
+
+.waveform-shell canvas,
 .analyzer-panel canvas {
   width: 100%;
   height: 100%;
   display: block;
-  border: 1px solid rgba(22, 185, 224, 0.18);
   background: linear-gradient(180deg, #071016, #060809);
 }
 
-.meter-strip {
+.analyzer-panel canvas {
+  height: calc(100% - 48px);
+}
+
+.playhead-handle {
   position: absolute;
-  z-index: 2;
-  top: 26px;
-  right: 30px;
+  top: 0;
+  bottom: 0;
+  left: 0%;
+  z-index: 4;
+  width: 22px;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  transform: translateX(-11px);
+}
+
+.playhead-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 10px;
+  width: 2px;
+  background: var(--green);
+  box-shadow: 0 0 16px rgba(57, 230, 124, 0.82);
+}
+
+.playhead-handle span {
+  position: absolute;
+  top: 10px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #051008;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 18px rgba(57, 230, 124, 0.72);
+}
+
+.meter-strip {
   display: flex;
   gap: 8px;
 }
 
 .meter-readout {
-  width: 92px;
-  padding: 8px 10px;
+  width: 82px;
+  padding: 6px 8px;
   border: 1px solid rgba(224, 43, 78, 0.36);
   background: rgba(8, 10, 13, 0.82);
 }
@@ -197,14 +351,14 @@ kbd {
   display: block;
   margin-top: 3px;
   color: var(--green);
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .frequency-ruler {
   position: absolute;
-  right: 24px;
-  bottom: 8px;
-  left: 24px;
+  right: 8px;
+  bottom: 7px;
+  left: 8px;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
   color: #61707c;
@@ -217,12 +371,15 @@ kbd {
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: minmax(720px, 1fr) 390px;
-  min-height: calc(100vh - 346px);
+  display: flex;
+  flex: 1;
 }
 
 .pad-deck {
+  width: 1080px;
+  min-width: 400px;
+  max-width: 80vw;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 64px 1fr;
   border-right: 1px solid var(--line-red-soft);
@@ -280,6 +437,7 @@ kbd {
   background: linear-gradient(150deg, #151b21, #0a0e12);
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
 .pad::before {
@@ -299,6 +457,30 @@ kbd {
 .pad.playing {
   border-color: var(--line-red);
   box-shadow: 0 0 0 2px var(--line-red), 0 0 28px rgba(224, 43, 78, 0.38), inset 0 0 34px rgba(224, 43, 78, 0.11);
+}
+
+.pad.selected {
+  transform: translateY(-1px);
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(22, 185, 224, 0.72), 0 0 28px rgba(22, 185, 224, 0.24), inset 0 0 34px rgba(22, 185, 224, 0.09);
+}
+
+.pad.selected.playing {
+  box-shadow: 0 0 0 2px var(--line-red), 0 0 0 5px rgba(22, 185, 224, 0.24), 0 0 30px rgba(224, 43, 78, 0.34), inset 0 0 34px rgba(224, 43, 78, 0.12);
+}
+
+.pad.locked::after {
+  content: "LOCK";
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  padding: 2px 6px;
+  border: 1px solid rgba(57, 230, 124, 0.42);
+  border-radius: 4px;
+  background: rgba(57, 230, 124, 0.1);
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 900;
 }
 
 .pad.armed {
@@ -350,19 +532,25 @@ kbd {
   bottom: 8px;
   left: 8px;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   gap: 8px;
 }
 
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 54px;
+  width: 42px;
   height: 28px;
   border-radius: 5px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 900;
+}
+
+.lock-button.active {
+  border-color: var(--green);
+  color: var(--green);
+  background: linear-gradient(180deg, rgba(57, 230, 124, 0.18), rgba(13, 31, 22, 0.92));
 }
 
 .stop-button:hover {
@@ -374,6 +562,8 @@ kbd {
 }
 
 .sound-tools {
+  flex: 1;
+  min-width: 300px;
   display: grid;
   grid-auto-rows: min-content;
   gap: 0;
@@ -413,9 +603,9 @@ kbd {
 
 .master-layout {
   display: grid;
-  grid-template-columns: 1fr 42px;
+  grid-template-columns: 1fr 1fr 36px;
   align-items: center;
-  gap: 24px;
+  gap: 14px;
 }
 
 .knob-control {
@@ -437,6 +627,7 @@ kbd {
   transform: translateX(-50%);
   cursor: grab;
   opacity: 0;
+  pointer-events: none;
 }
 
 .knob-control input:active {
@@ -458,6 +649,12 @@ kbd {
     radial-gradient(circle at 38% 34%, #303942, #11161a 64%),
     conic-gradient(from 225deg, var(--cyan) 0deg var(--angle, 135deg), #252d34 var(--angle, 135deg) 270deg, transparent 270deg);
   box-shadow: inset 0 0 0 5px #0a0d10, 0 10px 18px rgba(0, 0, 0, 0.38);
+  cursor: grab;
+  touch-action: none;
+}
+
+.knob:active {
+  cursor: grabbing;
 }
 
 .knob::after {
@@ -480,6 +677,23 @@ kbd {
 .knob-label {
   color: var(--muted);
   font-weight: 800;
+}
+
+.selected-volume .knob {
+  background:
+    radial-gradient(circle at 38% 34%, #303942, #11161a 64%),
+    conic-gradient(from 225deg, var(--line-red) 0deg var(--angle, 135deg), #252d34 var(--angle, 135deg) 270deg, transparent 270deg);
+}
+
+.selected-volume strong,
+.eq-knob strong {
+  color: #dbe7ed;
+  font-size: 12px;
+}
+
+.reset-pad-gain {
+  width: 100%;
+  margin-top: 14px;
 }
 
 .level-tower {
@@ -507,27 +721,15 @@ kbd {
   gap: 12px;
 }
 
-.fader-control {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  min-height: 170px;
+.knob-row {
+  align-items: start;
+}
+
+.eq-knob {
+  min-height: 116px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
-}
-
-.fader-control strong {
-  color: #dbe7ed;
-  font-size: 12px;
-}
-
-.eq-fader {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  width: 28px;
-  height: 120px;
-  accent-color: var(--line-red);
 }
 
 .mini-button {
@@ -559,7 +761,11 @@ kbd {
   }
 
   .workspace {
-    grid-template-columns: minmax(620px, 1fr) 340px;
+    /* flex keeps layout */
+  }
+
+  .monitor-panel {
+    /* flex keeps layout */
   }
 
   .pad-grid {
@@ -569,5 +775,10 @@ kbd {
 
   .pad-name {
     font-size: 14px;
+  }
+
+  .icon-button {
+    width: 38px;
+    font-size: 9px;
   }
 }

@@ -27,6 +27,15 @@ const state = {
   meterData: null,
   spectrumData: null,
   armedPadId: null,
+  selectedPadId: "A-0",
+  isSeeking: false,
+  librarySaveTimer: null,
+  particles: Array.from({ length: 150 }, () => ({
+    x: (Math.random() - 0.5) * 800,
+    y: (Math.random() - 0.5) * 800,
+    z: Math.random() * 800,
+    speed: Math.random() * 2 + 1,
+  })),
 };
 
 const elements = {
@@ -38,12 +47,20 @@ const elements = {
   stopAllButton: document.querySelector("#stopAllButton"),
   libraryStatus: document.querySelector("#libraryStatus"),
   analyzerCanvas: document.querySelector("#analyzerCanvas"),
+  waveformCanvas: document.querySelector("#waveformCanvas"),
+  waveformShell: document.querySelector("#waveformShell"),
+  playheadHandle: document.querySelector("#playheadHandle"),
+  selectedPadName: document.querySelector("#selectedPadName"),
+  selectedPadTime: document.querySelector("#selectedPadTime"),
   filterCanvas: document.querySelector("#filterCanvas"),
   peakDb: document.querySelector("#peakDb"),
   rmsDb: document.querySelector("#rmsDb"),
   masterMeter: document.querySelector("#masterMeter"),
   masterGain: document.querySelector("#masterGain"),
   masterValue: document.querySelector("#masterValue"),
+  selectedPadGain: document.querySelector("#selectedPadGain"),
+  selectedPadGainValue: document.querySelector("#selectedPadGainValue"),
+  padGainReset: document.querySelector("#padGainReset"),
   eqLow: document.querySelector("#eqLow"),
   eqMid: document.querySelector("#eqMid"),
   eqHigh: document.querySelector("#eqHigh"),
@@ -54,10 +71,15 @@ const elements = {
   lowPass: document.querySelector("#lowPass"),
   highPass: document.querySelector("#highPass"),
   filterValue: document.querySelector("#filterValue"),
+  visualizerCanvas: document.querySelector("#visualizerCanvas"),
+  visualizerShell: document.querySelector("#visualizerShell"),
+  gifInput: document.querySelector("#gifInput"),
+  customGif: document.querySelector("#customGif"),
 };
 
 init();
 
+//根源
 function init() {
   state.pads = createPadModels();
   renderChannels();
@@ -65,10 +87,14 @@ function init() {
   bindEvents();
   restoreLibrary();
   drawAnalyzer();
+  drawWaveform();
+  drawVisualizer();
   drawFilterCurve();
   updateKnobs();
+  updateSelectedPadPanel();
 }
 
+//Pad作成だぞごるぁ
 function createPadModels() {
   return channels.flatMap((channel, channelIndex) =>
     padKeys.map((key, padIndex) => ({
@@ -81,22 +107,34 @@ function createPadModels() {
       displayName: "Empty",
       blob: null,
       buffer: null,
+      gainDb: 0,
+      replayLock: false,
+      cursorTime: 0,
       color: padColors[(channelIndex + padIndex) % padColors.length],
     }))
   );
 }
 
+//イベントバインド
 function bindEvents() {
   elements.folderButton.addEventListener("click", chooseFolder);
   elements.folderInput.addEventListener("change", event => importFiles([...event.target.files]));
   elements.stopAllButton.addEventListener("click", stopAllImmediate);
   elements.masterGain.addEventListener("input", updateMasterGain);
+  elements.selectedPadGain.addEventListener("input", updateSelectedPadGain);
+  elements.padGainReset.addEventListener("click", resetPadVolumes);
   elements.lowPass.addEventListener("input", updateFilter);
   elements.highPass.addEventListener("input", updateFilter);
   elements.eqLow.addEventListener("input", updateEq);
   elements.eqMid.addEventListener("input", updateEq);
   elements.eqHigh.addEventListener("input", updateEq);
   elements.eqReset.addEventListener("click", resetEq);
+  elements.waveformShell.addEventListener("pointerdown", beginWaveSeek);
+  if (elements.visualizerShell && elements.gifInput) {
+    elements.visualizerShell.addEventListener("click", () => elements.gifInput.click());
+    elements.gifInput.addEventListener("change", handleGifUpload);
+  }
+  bindFineKnobs();
 
   window.addEventListener("keydown", event => {
     if (event.repeat) return;
@@ -130,6 +168,8 @@ function bindEvents() {
   });
 }
 
+
+//フォルダ選択画面じゃけん
 async function chooseFolder() {
   if ("showDirectoryPicker" in window) {
     try {
@@ -151,6 +191,7 @@ async function chooseFolder() {
   elements.folderInput.click();
 }
 
+//ファイルインポートじゃんね♡
 async function importFiles(files) {
   const audioFiles = files
     .filter(file => audioExt.test(file.name) || file.type.startsWith("audio/"))
@@ -173,10 +214,11 @@ async function importFiles(files) {
   });
 
   renderPads();
-  const saved = await saveLibrary(assigned);
+  selectPad(state.pads[0]?.id || state.selectedPadId);
+  const saved = await saveLibrary();
   elements.libraryStatus.textContent = saved
-    ? `${assigned.length} 個のファイルが入ったよー！`
-    : `${assigned.length} 個のファイルがロードされたよー！`;
+    ? `${assigned.length} files loaded and saved`
+    : `${assigned.length} files loaded`;
 }
 
 function getFilePath(file) {
@@ -200,6 +242,7 @@ function renderChannels() {
   syncChannelButtons();
 }
 
+//Pad描画するぞい
 function renderPads() {
   elements.padGrid.replaceChildren();
   getVisiblePads().forEach(pad => {
@@ -208,22 +251,32 @@ function renderPads() {
     const trigger = fragment.querySelector(".pad-trigger");
     const stopButton = fragment.querySelector(".stop-button");
     const tapeButton = fragment.querySelector(".tape-button");
+    const lockButton = fragment.querySelector(".lock-button");
 
     padNode.dataset.padId = pad.id;
     padNode.style.setProperty("--pad-color", pad.color);
     padNode.classList.toggle("loaded", Boolean(pad.blob));
     padNode.classList.toggle("playing", state.activeVoices.has(pad.id));
     padNode.classList.toggle("armed", state.armedPadId === pad.id);
+    padNode.classList.toggle("selected", state.selectedPadId === pad.id);
+    padNode.classList.toggle("locked", pad.replayLock);
     fragment.querySelector(".pad-key").textContent = pad.key.toUpperCase();
     fragment.querySelector(".pad-name").textContent = pad.displayName;
     fragment.querySelector(".pad-file").textContent = pad.fileName || "No file";
     trigger.addEventListener("click", () => triggerPad(pad.id));
+    lockButton.classList.toggle("active", pad.replayLock);
+    lockButton.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleReplayLock(pad.id);
+    });
     stopButton.addEventListener("click", event => {
       event.stopPropagation();
+      selectPad(pad.id);
       stopPadImmediate(pad.id);
     });
     tapeButton.addEventListener("click", event => {
       event.stopPropagation();
+      selectPad(pad.id);
       tapeStopPad(pad.id);
     });
 
@@ -231,11 +284,18 @@ function renderPads() {
   });
 }
 
+//Pad状態同期
 function syncPadState(padId) {
   const padNode = elements.padGrid.querySelector(`[data-pad-id="${padId}"]`);
   if (!padNode) return;
   padNode.classList.toggle("playing", state.activeVoices.has(padId));
   padNode.classList.toggle("armed", state.armedPadId === padId);
+  padNode.classList.toggle("selected", state.selectedPadId === padId);
+  const pad = state.pads.find(item => item.id === padId);
+  if (pad) {
+    padNode.classList.toggle("locked", pad.replayLock);
+    padNode.querySelector(".lock-button")?.classList.toggle("active", pad.replayLock);
+  }
 }
 
 function getVisiblePads() {
@@ -248,10 +308,66 @@ function setChannel(index) {
   renderPads();
 }
 
+function selectPad(padId) {
+  const previousPadId = state.selectedPadId;
+  state.selectedPadId = padId;
+  if (previousPadId) syncPadState(previousPadId);
+  syncPadState(padId);
+  updateSelectedPadPanel();
+  prepareSelectedWaveform();
+}
+
 function syncChannelButtons() {
   [...elements.channelStrip.children].forEach((button, index) => {
     button.classList.toggle("active", index === state.channelIndex);
   });
+}
+
+function getSelectedPad() {
+  return state.pads.find(pad => pad.id === state.selectedPadId) || state.pads[0];
+}
+
+function updateSelectedPadPanel() {
+  const pad = getSelectedPad();
+  if (!pad) return;
+  elements.selectedPadName.textContent = `${pad.channel}-${pad.padIndex + 1} ${pad.displayName}`;
+  elements.selectedPadGain.value = String(pad.gainDb);
+  elements.selectedPadTime.textContent = formatTime(getPadPlaybackTime(pad), pad.buffer?.duration || 0);
+  updateSelectedPadGain(false);
+}
+
+async function prepareSelectedWaveform() {
+  const pad = getSelectedPad();
+  if (!pad?.blob || pad.buffer) return;
+  try {
+    await ensureAudio();
+    await decodePadBuffer(pad);
+  } catch {
+    // The waveform stays in its unloaded state if decoding is not available yet.
+  }
+}
+
+async function decodePadBuffer(pad) {
+  if (pad.buffer || !pad.blob) return;
+  const arrayBuffer = await pad.blob.arrayBuffer();
+  pad.buffer = await state.audioContext.decodeAudioData(arrayBuffer.slice(0));
+}
+
+function getPadPlaybackTime(pad) {
+  const voice = state.activeVoices.get(pad.id);
+  if (voice && state.audioContext) {
+    return Math.min(pad.buffer?.duration || 0, voice.offset + state.audioContext.currentTime - voice.startedAt);
+  }
+  return Math.min(pad.cursorTime || 0, pad.buffer?.duration || 0);
+}
+
+function toggleReplayLock(padId) {
+  const pad = state.pads.find(item => item.id === padId);
+  if (!pad) return;
+  selectPad(padId);
+  pad.replayLock = !pad.replayLock;
+  syncPadState(padId);
+  scheduleLibrarySave();
 }
 
 async function ensureAudio() {
@@ -297,27 +413,32 @@ function createBiquad(type, frequency, q, gain) {
   return filter;
 }
 
-async function triggerPad(padId) {
+async function triggerPad(padId, options = {}) {
   const pad = state.pads.find(item => item.id === padId);
+  selectPad(padId);
+  if (pad?.replayLock && state.activeVoices.has(padId) && !options.forceRestart) {
+    return;
+  }
   if (!pad?.blob) {
     flashPad(padId);
     return;
   }
 
   await ensureAudio();
-  if (!pad.buffer) {
-    const arrayBuffer = await pad.blob.arrayBuffer();
-    pad.buffer = await state.audioContext.decodeAudioData(arrayBuffer.slice(0));
-  }
+  await decodePadBuffer(pad);
 
-  stopPadImmediate(padId, false);
+  stopPadImmediate(padId, false, false);
   const source = state.audioContext.createBufferSource();
   const gain = state.audioContext.createGain();
+  const requestedOffset = options.seek ?? pad.cursorTime ?? 0;
+  const startOffset = Math.min(requestedOffset, Math.max(0, pad.buffer.duration - 0.01));
+  pad.cursorTime = startOffset;
   source.buffer = pad.buffer;
+  gain.gain.value = dbToGain(pad.gainDb);
   source.connect(gain).connect(state.lowEq);
-  source.start();
+  source.start(0, startOffset);
 
-  const voice = { source, gain, startedAt: state.audioContext.currentTime };
+  const voice = { source, gain, startedAt: state.audioContext.currentTime, offset: startOffset };
   state.activeVoices.set(padId, voice);
   state.armedPadId = padId;
   syncPadState(padId);
@@ -325,6 +446,7 @@ async function triggerPad(padId) {
   source.onended = () => {
     if (state.activeVoices.get(padId) === voice) {
       state.activeVoices.delete(padId);
+      pad.cursorTime = 0;
       syncPadState(padId);
     }
   };
@@ -341,18 +463,25 @@ function flashPad(padId) {
   }, 140);
 }
 
-function stopPadImmediate(padId, sync = true) {
+//Pad停止
+function stopPadImmediate(padId, sync = true, resetCursor = true) {
   const voice = state.activeVoices.get(padId);
-  if (!voice) return;
+  const pad = state.pads.find(item => item.id === padId);
+  if (!voice) {
+    if (pad && resetCursor) pad.cursorTime = 0;
+    return;
+  }
   try {
     voice.source.stop();
   } catch {
     // Already stopped.
   }
   state.activeVoices.delete(padId);
+  if (pad && resetCursor) pad.cursorTime = 0;
   if (sync) syncPadState(padId);
 }
 
+//にゅわーんってとまるやつ
 function tapeStopPad(padId) {
   const voice = state.activeVoices.get(padId);
   if (!voice || !state.audioContext) return;
@@ -379,6 +508,22 @@ function updateMasterGain() {
   }
 }
 
+//ぶちあげいん
+function updateSelectedPadGain(shouldSave = true) {
+  const pad = getSelectedPad();
+  if (!pad) return;
+  const db = Number(elements.selectedPadGain.value);
+  pad.gainDb = db;
+  elements.selectedPadGainValue.textContent = `${formatSigned(db)} dB`;
+  setKnobValue(elements.selectedPadGain, -48, 6);
+  const voice = state.activeVoices.get(pad.id);
+  if (voice) {
+    voice.gain.gain.cancelScheduledValues(state.audioContext.currentTime);
+    voice.gain.gain.setValueAtTime(dbToGain(db), state.audioContext.currentTime);
+  }
+  if (shouldSave) scheduleLibrarySave();
+}
+
 function updateEq() {
   const low = Number(elements.eqLow.value);
   const mid = Number(elements.eqMid.value);
@@ -386,6 +531,9 @@ function updateEq() {
   elements.eqLowValue.textContent = formatSigned(low);
   elements.eqMidValue.textContent = formatSigned(mid);
   elements.eqHighValue.textContent = formatSigned(high);
+  setKnobValue(elements.eqLow, -18, 18);
+  setKnobValue(elements.eqMid, -18, 18);
+  setKnobValue(elements.eqHigh, -18, 18);
   if (state.lowEq) state.lowEq.gain.value = low;
   if (state.midEq) state.midEq.gain.value = mid;
   if (state.highEq) state.highEq.gain.value = high;
@@ -396,6 +544,20 @@ function resetEq() {
   elements.eqMid.value = "0";
   elements.eqHigh.value = "0";
   updateEq();
+}
+
+function resetPadVolumes() {
+  state.pads.forEach(pad => {
+    pad.gainDb = 0;
+    const voice = state.activeVoices.get(pad.id);
+    if (voice && state.audioContext) {
+      voice.gain.gain.cancelScheduledValues(state.audioContext.currentTime);
+      voice.gain.gain.setValueAtTime(1, state.audioContext.currentTime);
+    }
+  });
+  elements.selectedPadGain.value = "0";
+  updateSelectedPadGain(false);
+  scheduleLibrarySave();
 }
 
 function updateFilter() {
@@ -414,8 +576,60 @@ function updateFilter() {
 
 function updateKnobs() {
   updateMasterGain();
+  updateSelectedPadGain(false);
   updateEq();
   updateFilter();
+}
+
+function bindFineKnobs() {
+  document.querySelectorAll(".fine-knob").forEach(control => {
+    const input = control.querySelector("input");
+    const knob = control.querySelector(".knob");
+    if (!input || !knob) return;
+
+    knob.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      knob.setPointerCapture(event.pointerId);
+      const startY = event.clientY;
+      const startValue = Number(input.value);
+      const min = Number(input.min);
+      const max = Number(input.max);
+      const sensitivity = input.id === "lowPass" || input.id === "highPass" ? 0.0012 : 0.0024;
+
+      const move = moveEvent => {
+        const range = max - min;
+        const nextValue = startValue - (moveEvent.clientY - startY) * range * sensitivity;
+        input.value = clampToStep(nextValue, min, max, Number(input.step) || 0.1);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+
+      const end = endEvent => {
+        knob.releasePointerCapture(endEvent.pointerId);
+        knob.removeEventListener("pointermove", move);
+      };
+
+      knob.addEventListener("pointermove", move);
+      knob.addEventListener("pointerup", end, { once: true });
+      knob.addEventListener("pointercancel", end, { once: true });
+    });
+
+    knob.addEventListener("wheel", event => {
+      event.preventDefault();
+      const min = Number(input.min);
+      const max = Number(input.max);
+      const step = Number(input.step) || 0.1;
+      const multiplier = input.id === "lowPass" || input.id === "highPass" ? 8 : 1;
+      const direction = event.deltaY > 0 ? -1 : 1;
+      input.value = clampToStep(Number(input.value) + direction * step * multiplier, min, max, step);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, { passive: false });
+  });
+}
+
+function clampToStep(value, min, max, step) {
+  const clamped = Math.max(min, Math.min(max, value));
+  const stepped = Math.round(clamped / step) * step;
+  return stepped.toFixed(step < 1 ? 1 : 0);
 }
 
 function setKnobValue(input, min, max, logarithmic = false) {
@@ -448,6 +662,153 @@ function formatSigned(value) {
 
 function formatHz(value) {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)} kHz` : `${Math.round(value)} Hz`;
+}
+
+function formatTime(current, duration) {
+  const currentText = formatSingleTime(current);
+  if (!duration) return currentText;
+  return `${currentText} / ${formatSingleTime(duration)}`;
+}
+
+function formatSingleTime(value) {
+  const safeValue = Math.max(0, value || 0);
+  const minutes = Math.floor(safeValue / 60);
+  const seconds = Math.floor(safeValue % 60).toString().padStart(2, "0");
+  const millis = Math.floor((safeValue % 1) * 1000).toString().padStart(3, "0");
+  return `${minutes}:${seconds}.${millis}`;
+}
+
+function beginWaveSeek(event) {
+  const pad = getSelectedPad();
+  if (!pad?.buffer) return;
+  state.isSeeking = true;
+  elements.waveformShell.setPointerCapture(event.pointerId);
+  seekSelectedPad(event);
+  elements.waveformShell.addEventListener("pointermove", seekSelectedPad);
+  elements.waveformShell.addEventListener("pointerup", endWaveSeek, { once: true });
+  elements.waveformShell.addEventListener("pointercancel", endWaveSeek, { once: true });
+}
+
+function seekSelectedPad(event) {
+  const pad = getSelectedPad();
+  if (!pad?.buffer) return;
+  const rect = elements.waveformShell.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  pad.cursorTime = ratio * pad.buffer.duration;
+  updatePlayheadPosition(pad);
+}
+
+function endWaveSeek(event) {
+  elements.waveformShell.releasePointerCapture(event.pointerId);
+  elements.waveformShell.removeEventListener("pointermove", seekSelectedPad);
+  state.isSeeking = false;
+  const pad = getSelectedPad();
+  if (pad && state.activeVoices.has(pad.id)) {
+    triggerPad(pad.id, { seek: pad.cursorTime, forceRestart: true });
+  }
+}
+
+function drawWaveform() {
+  const canvas = elements.waveformCanvas;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const pad = getSelectedPad();
+
+  ctx.clearRect(0, 0, width, height);
+  drawWaveGrid(ctx, width, height);
+
+  if (pad?.buffer) {
+    drawPadWaveform(ctx, width, height, pad);
+    updatePlayheadPosition(pad);
+  } else {
+    drawEmptyWaveform(ctx, width, height, pad);
+    elements.playheadHandle.style.left = "0%";
+  }
+
+  requestAnimationFrame(drawWaveform);
+}
+
+function drawWaveGrid(ctx, width, height) {
+  ctx.fillStyle = "#06090b";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.lineWidth = 1;
+
+  for (let i = 1; i < 6; i += 1) {
+    const y = (height / 6) * i;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  for (let i = 1; i < 12; i += 1) {
+    const x = (width / 12) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+}
+
+function drawPadWaveform(ctx, width, height, pad) {
+  const buffer = pad.buffer;
+  const channelData = buffer.getChannelData(0);
+  const samplesPerPixel = Math.max(1, Math.floor(channelData.length / width));
+  const centerY = height / 2;
+  const topGradient = ctx.createLinearGradient(0, 0, width, 0);
+  topGradient.addColorStop(0, "rgba(22,185,224,0.25)");
+  topGradient.addColorStop(0.5, "rgba(224,43,78,0.82)");
+  topGradient.addColorStop(1, "rgba(57,230,124,0.4)");
+
+  ctx.strokeStyle = topGradient;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  for (let x = 0; x < width; x += 1) {
+    const start = x * samplesPerPixel;
+    let min = 1;
+    let max = -1;
+    for (let i = 0; i < samplesPerPixel; i += 1) {
+      const value = channelData[start + i] || 0;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    const y1 = centerY + min * centerY * 0.82;
+    const y2 = centerY + max * centerY * 0.82;
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(224,43,78,0.08)";
+  const playX = (getPadPlaybackTime(pad) / buffer.duration) * width;
+  ctx.fillRect(0, 0, playX, height);
+}
+
+function drawEmptyWaveform(ctx, width, height, pad) {
+  ctx.strokeStyle = "rgba(22,185,224,0.28)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x <= width; x += 12) {
+    const y = height / 2 + Math.sin(x / 30) * 14 + Math.sin(x / 95) * 9;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.32)";
+  ctx.font = "22px Segoe UI";
+  ctx.fillText(pad?.blob ? "Waveform will appear after decoding" : "Select a loaded pad", 24, height - 28);
+}
+
+function updatePlayheadPosition(pad) {
+  const duration = pad.buffer?.duration || 0;
+  const current = duration ? getPadPlaybackTime(pad) : 0;
+  const ratio = duration ? Math.max(0, Math.min(1, current / duration)) : 0;
+  elements.playheadHandle.style.left = `${ratio * 100}%`;
+  elements.selectedPadTime.textContent = formatTime(current, duration);
 }
 
 function drawAnalyzer() {
@@ -544,6 +905,86 @@ function drawIdleSpectrum(ctx, width, height) {
   ctx.strokeStyle = "rgba(22,185,224,0.38)";
   ctx.lineWidth = 2;
   ctx.stroke();
+}
+
+function handleGifUpload(event) {
+  const file = event.target.files[0];
+  if (file && file.type === "image/gif") {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      elements.customGif.src = e.target.result;
+      elements.customGif.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function drawVisualizer() {
+  const canvas = elements.visualizerCanvas;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Clear with trails
+  ctx.fillStyle = "rgba(4, 6, 8, 0.4)";
+  ctx.fillRect(0, 0, width, height);
+
+  const cx = width / 2;
+  const cy = height / 2;
+
+  // React to audio
+  let boost = 0;
+  if (state.spectrumData) {
+    let bassSum = 0;
+    for(let i = 0; i < 10; i++) bassSum += state.spectrumData[i];
+    boost = bassSum / 10 / 255;
+  }
+
+  // Draw 3D particles
+  state.particles.forEach(p => {
+    // Move particle towards camera based on speed and audio boost
+    p.z -= p.speed + (boost * 20);
+    
+    // Reset if behind camera
+    if (p.z <= 0) {
+      p.x = (Math.random() - 0.5) * 800;
+      p.y = (Math.random() - 0.5) * 800;
+      p.z = 800;
+      p.speed = Math.random() * 2 + 1;
+    }
+
+    // 3D projection
+    const perspective = 300 / (p.z || 1);
+    const px = cx + p.x * perspective;
+    const py = cy + p.y * perspective;
+    const size = Math.max(0.1, perspective * (1 + boost * 3));
+
+    if (px >= 0 && px <= width && py >= 0 && py <= height) {
+      ctx.beginPath();
+      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(57, 230, 124, ${1 - p.z / 800})`; // Greenish neon
+      ctx.fill();
+    }
+  });
+
+  // Draw cyber grid overlay on walls/floor
+  ctx.strokeStyle = `rgba(22, 185, 224, ${0.1 + boost * 0.2})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const time = Date.now() / 1000;
+  for(let i = 0; i < width; i += 40) {
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, height);
+  }
+  for(let i = 0; i < height; i += 40) {
+    const y = (i + (time * 50) % 40);
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+  }
+  ctx.stroke();
+
+  requestAnimationFrame(drawVisualizer);
 }
 
 function updateMeter() {
@@ -643,7 +1084,14 @@ function openDb() {
   });
 }
 
-async function saveLibrary(files) {
+function scheduleLibrarySave() {
+  window.clearTimeout(state.librarySaveTimer);
+  state.librarySaveTimer = window.setTimeout(() => {
+    saveLibrary();
+  }, 450);
+}
+
+async function saveLibrary() {
   if (!("indexedDB" in window)) return false;
   try {
     const db = await openDb();
@@ -651,8 +1099,16 @@ async function saveLibrary(files) {
       const transaction = db.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       store.clear();
-      files.forEach((file, index) => {
-        store.put({ index, name: file.name, type: file.type, blob: file });
+      state.pads.forEach((pad, index) => {
+        if (!pad.blob) return;
+        store.put({
+          index,
+          name: pad.fileName,
+          type: pad.blob.type,
+          blob: pad.blob,
+          gainDb: pad.gainDb,
+          replayLock: pad.replayLock,
+        });
       });
       transaction.oncomplete = resolve;
       transaction.onerror = () => reject(transaction.error);
@@ -685,8 +1141,12 @@ async function restoreLibrary() {
       pad.displayName = trimExtension(record.name);
       pad.blob = record.blob;
       pad.buffer = null;
+      pad.gainDb = Number(record.gainDb) || 0;
+      pad.replayLock = Boolean(record.replayLock);
     });
-    elements.libraryStatus.textContent = `${records.length} 個のファイルがあるよー！`;
+    const restoredPad = records[0]?.index != null ? state.pads[records[0].index] : null;
+    selectPad(restoredPad?.id || state.selectedPadId);
+    elements.libraryStatus.textContent = `${records.length} このファイルきたぞぉ`;
     renderPads();
   } catch {
     elements.libraryStatus.textContent = "Library restore unavailable";
